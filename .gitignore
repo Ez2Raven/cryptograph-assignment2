@@ -193,3 +193,8 @@ pyrightconfig.json
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,python
+
+# ignore generated keys
+*.key
+*.x509
+*.pub
