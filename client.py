@@ -91,6 +91,15 @@ def connect(server_ip_address, port, server_pki_public_key, ecdh_private_key, ec
         )
         # prepend the iv to the ciphertext
         s.sendall(iv+ciphertext)
+        
+        time.sleep(3)
+
+         # Waiting for client's command/inputs
+        server_message = s.recv(BUFFER_SIZE)
+        iv2 = server_message[:16]
+        ciphertext2 = server_message[16:]
+        plaintext = aes256.decrypt(iv2, ciphertext2, shared_key)
+        print('Received from server:\n', plaintext)
 
 
 if __name__ == '__main__':

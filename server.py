@@ -45,10 +45,11 @@ def listen(ip_address, port, pki_public_key, ecdh_private_key, ecdh_public_key):
 
     pki_public_key_bytes = pki_public_key.public_bytes(
         encoding=serialization.Encoding.PEM)
-    
+
     x25519_public_key_bytes = ecdh_public_key.public_bytes_raw()
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+
         s.bind((ip_address, port))
         s.listen()
         conn, addr = s.accept()
@@ -65,21 +66,23 @@ def listen(ip_address, port, pki_public_key, ecdh_private_key, ecdh_public_key):
             print(
                 'Sent host public key to client for authentication:\n' +
                 f'{pki_public_key_bytes.decode()}')
-            
+
             time.sleep(3)
 
             # wait for client to send its x25519 public cert for ECDH handshake
             client_x25519_public_key_data = conn.recv(BUFFER_SIZE)
-            
+
             print(
-            'Received client x25519 public key for diffie-hellman key exchange:\n' +
-            f'{len(client_x25519_public_key_data)} bytes')
+                'Received client x25519 public key for diffie-hellman key exchange:\n' +
+                f'{len(client_x25519_public_key_data)} bytes')
 
             time.sleep(3)
 
-            client_x25519_public_key = x25519.X25519PublicKey.from_public_bytes(client_x25519_public_key_data)
+            client_x25519_public_key = x25519.X25519PublicKey.from_public_bytes(
+                client_x25519_public_key_data)
 
-            print(f'Sent server X25519 public key to client for diffie-hellman key exchange: {len(x25519_public_key_bytes)} bytes.')
+            print(
+                f'Sent server X25519 public key to client for diffie-hellman key exchange: {len(x25519_public_key_bytes)} bytes.')
             conn.sendall(x25519_public_key_bytes)
 
             time.sleep(3)
@@ -92,7 +95,8 @@ def listen(ip_address, port, pki_public_key, ecdh_private_key, ecdh_public_key):
                 agreed_length=32,
                 agreed_info=b'handshake data')
 
-            print(f'Server derived shared key: {binascii.hexlify(shared_key).decode()}')
+            print(
+                f'Server derived shared key: {binascii.hexlify(shared_key).decode()}')
 
             time.sleep(3)
 
@@ -101,7 +105,16 @@ def listen(ip_address, port, pki_public_key, ecdh_private_key, ecdh_public_key):
             iv = client_message[:16]
             ciphertext = client_message[16:]
             plaintext = aes256.decrypt(iv, ciphertext, shared_key)
-            print('Received:', plaintext)
+            print('Received from client:\n', plaintext)
+            
+            time.sleep(3)
+            # note that cbc mode is used, a random iv must be used for each message
+            (iv2, ciphertext2) = aes256.encrypt(
+                diffie_hellman_shared_key=shared_key,
+                message=b'Acknowledged by server.'
+            )
+            # prepend the iv to the ciphertext
+            conn.sendall(iv2+ciphertext2)
 
 
 if __name__ == '__main__':
