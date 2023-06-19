@@ -1,9 +1,11 @@
 """
-    Utlity for x509cert functions
+    Utlity for x509cert functions.
+    Defaults to PEM encoding, TraditionalOpenSSL Format
 """
 import datetime
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.backends import default_backend
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes
@@ -104,3 +106,28 @@ def write_public_key_to_file(public_cert, filepath):
         # Pokemon catch, because i'm new to python
         print('[Write public cert to disk]' +
               f'Error occurred while writing the public cert to file: {exception}\n')
+
+def cert_fingerprint_from_file(filepath, hash_function=hashes.SHA256()):
+    '''
+        Returns the certifcate fingerprint from a file.
+        This function is typically used to return the fingerprint from a trusted cert store
+        to compare against with an untrusted certificate
+    '''
+    with open(filepath, "rb") as cert_file:
+        cert_data = cert_file.read()
+
+    cert = x509.load_pem_x509_certificate(cert_data, default_backend())
+    fingerprint = cert.fingerprint(hash_function)
+    print(f'X509 Certificate Location: {filepath}\nFingerprint: {fingerprint.hex()}')
+    return fingerprint
+
+def cert_fingerprint_from_bytes(cert_bytes, hash_function=hashes.SHA256()):
+    '''
+        Returns the certifcate fingerprint from bytes.
+        This function is typically used to return the cert fingerprint originating from a data stream
+        to compare against with an trusted certificate
+    '''
+    cert = x509.load_pem_x509_certificate(cert_bytes)
+    fingerprint = cert.fingerprint(hash_function)
+    print(f'Fingerprint from bytes: {fingerprint.hex()}')
+    return fingerprint

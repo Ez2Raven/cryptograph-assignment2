@@ -106,7 +106,7 @@ def listen(ip_address, port, pki_public_key, ecdh_private_key, ecdh_public_key):
             ciphertext = client_message[16:]
             plaintext = aes256.decrypt(iv, ciphertext, shared_key)
             print('Received from client:\n', plaintext)
-            
+
             time.sleep(3)
             # note that cbc mode is used, a random iv must be used for each message
             (iv2, ciphertext2) = aes256.encrypt(
