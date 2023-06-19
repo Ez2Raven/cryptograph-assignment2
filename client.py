@@ -8,6 +8,7 @@ import datetime
 import socket
 import time
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import x25519
 from crypto_utils import x509Util
 from crypto_utils import ecdh_x25519
@@ -16,7 +17,8 @@ from crypto_utils import aes256
 # Networking Settings
 SERVER = 'localhost'  # The server's hostname or IP address
 PORT = 65432        # The port used by the server
-BUFFER_SIZE = 2048
+BUFFER_SIZE = 4096
+CONSOLE_SPEED = 5
 
 # X25519 File Storage Settings
 OUTPUT_DIR = 'client_output'
@@ -32,52 +34,72 @@ TRUSTED_SERVER_X509_PUBLIC_CERT_FILEPATH = os.path.join(
     'server_output', 'server-id.x509')
 
 
-def connect(server_ip_address, port, trusted_server_fingerprint, ecdh_private_key, ecdh_public_key):
+def connect(server_ip_address, port, pki_public_key,
+            ecdh_private_key, ecdh_public_key):
     '''
-        1. Connects to server via insecure TCP communication channel.
-        2. Wait to receive server PKI public certificate for authentication.
-        3. Calculate the digest of the public certificate.
-        4. Compare the digest against fingerprint from a trusted certificate store.
-        4. Calculate the shared key to create the cipher for symmetric encryption
-        5. Prompt user for message input
-        6. Sends the encrypted message to client
-        7. Wait to receive encrypted message from client
-        8. Decrypt and print decrypted message from client
+       Attempt to establish a secure connection to the server and
+       communicate using encrypted messaging
     '''
 
+    pki_public_key_bytes = pki_public_key.public_bytes(
+        encoding=serialization.Encoding.PEM)
     x25519_public_key_bytes = ecdh_public_key.public_bytes_raw()
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        print(f'1. Connecting to server: {server_ip_address}:{port}')
         s.connect((server_ip_address, port))
-        print(f'Connected to server: {server_ip_address}:{port}')
+        print(f'2. Connected to server: {server_ip_address}:{port}')
+
+        print(
+            '3-1. Sending client public key to server for authentication:\n' +
+            f'{pki_public_key_bytes.decode()}')
+
+        # send server pki public cert for authentication
+        s.sendall(pki_public_key_bytes)
+
+        print(
+            '3-2. Sent client public key to server for authentication:\n' +
+            f'{pki_public_key_bytes.decode()}')
+
+        # time.sleep(CONSOLE_SPEED)
+
         server_pki_public_cert_bytes = s.recv(BUFFER_SIZE)
         print(
-            'Received server pki public key for authentication:\n' +
+            '4-1. Received server pki public key for authentication:\n' +
             f'{server_pki_public_cert_bytes.decode()}')
 
-        time.sleep(3)
+        # time.sleep(CONSOLE_SPEED)
+
+        # Since the server.py will always generate a new x509 certificate after execution,
+        # We'll simulate accquiring a trusted fingerprint from a trusted certstore.
+        # This fingerprint will be used for authenticating the server later.
+        trusted_server_fingerprint = x509Util.cert_fingerprint_from_file(
+            TRUSTED_SERVER_X509_PUBLIC_CERT_FILEPATH, hashes.SHA256())
 
         # compare fingerprint from trusted storage and from the server
         untrusted_fingerprint = x509Util.cert_fingerprint_from_bytes(
             server_pki_public_cert_bytes)
         if untrusted_fingerprint != trusted_server_fingerprint:
             raise Exception(
-                "Fingerprint from TCP stream does not match with fingerprint from trusted storage.")
+                "4-2. Fingerprint from TCP stream does not match with fingerprint from trusted storage.")
+
+        print(
+            '4-2. Fingerprint from TCP stream matched with fingerprint from trusted storage')
 
         # Send client x25519 public key for ECDH handshake
         s.sendall(x25519_public_key_bytes)
         print(
-            f'Sent client x25519 public key to server: {len(x25519_public_key_bytes)} bytes.')
+            f'5. Sent client x25519 public key to server: {len(x25519_public_key_bytes)} bytes.')
 
-        time.sleep(3)
+        # time.sleep(CONSOLE_SPEED)
 
         # wait for server to send its x25519 public cert for ECDH handshake
         server_x25519_public_key_data = s.recv(BUFFER_SIZE)
         print(
-            'Received server x25519 public key for ecdh key exchange:\n' +
+            '6. Received server x25519 public key for ecdh key exchange:\n' +
             f'{len(server_x25519_public_key_data)} bytes.')
 
-        time.sleep(3)
+        # time.sleep(CONSOLE_SPEED)
 
         server_x25519_public_key = x25519.X25519PublicKey.from_public_bytes(
             server_x25519_public_key_data)
@@ -90,24 +112,32 @@ def connect(server_ip_address, port, trusted_server_fingerprint, ecdh_private_ke
             agreed_info=b'handshake data')
 
         print(
-            f'Client derived shared key: {binascii.hexlify(shared_key).decode()}')
+            f'7. Client derived shared key: {binascii.hexlify(shared_key).decode()}')
 
+        plaintext = b'secret message from client.'
+        print(f'8-1. Encrypting {plaintext} using AES256 in CBC mode')
         # note that cbc mode is used, a random iv must be used for each message
         (iv, ciphertext) = aes256.encrypt(
             diffie_hellman_shared_key=shared_key,
-            message=b'secret message from client.'
+            message=plaintext
         )
         # prepend the iv to the ciphertext
         s.sendall(iv+ciphertext)
+        print('8-2. Sent client data:\n' +
+              f'random iv: {binascii.hexlify(iv).decode()}\n' +
+              f'ciphertext: {binascii.hexlify(ciphertext).decode()}')
 
-        time.sleep(3)
+        # time.sleep(CONSOLE_SPEED)
 
         # Waiting for client's command/inputs
-        server_message = s.recv(BUFFER_SIZE)
-        iv2 = server_message[:16]
-        ciphertext2 = server_message[16:]
-        plaintext = aes256.decrypt(iv2, ciphertext2, shared_key)
-        print('Received from server:\n', plaintext)
+        # server_message = s.recv(BUFFER_SIZE)
+        # iv2 = server_message[:16]
+        # ciphertext2 = server_message[16:]
+        # print('9-1. Received server data:\n' +
+        #       f'random iv: {binascii.hexlify(iv2).decode()}\n' +
+        #       f'ciphertext: {binascii.hexlify(ciphertext2).decode()}')
+        # plaintext2 = aes256.decrypt(iv2, ciphertext2, shared_key)
+        # print(f'9-2. Decrypted {plaintext2} using AES256 in CBC mode')
 
 
 if __name__ == '__main__':
@@ -145,11 +175,5 @@ if __name__ == '__main__':
         public_key=ephermal_key_pair[1],
         filepath=X25519_PUBLIC_KEY_FILEPATH)
 
-    # Since the server.py will always generate a new x509 certificate after execution,
-    # We'll simulate accquiring a trusted fingerprint from a trusted certstore.
-    # This fingerprint will be used for authenticating the server later.
-    SERVER_HOST_KEY_FINGERPRINT = x509Util.cert_fingerprint_from_file(
-        TRUSTED_SERVER_X509_PUBLIC_CERT_FILEPATH, hashes.SHA256())
-
-    connect(SERVER, PORT, SERVER_HOST_KEY_FINGERPRINT,
+    connect(SERVER, PORT, x509_public_cert,
             ephermal_key_pair[0], ephermal_key_pair[1])
