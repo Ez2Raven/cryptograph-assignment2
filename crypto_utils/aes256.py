@@ -11,8 +11,11 @@ def encrypt(diffie_hellman_shared_key, message=b"A secret message"):
     '''
         Returns a tuple of (iv,ciphertext). The ciphertext is generated using CBC mode,
         a random iv and the diffie-hellman shared key.
-        Padding must be used with CBC mode.
+
+        Since padding must be used when using CBC,
+        its implementation is abstracted from server.py and client.py
     '''
+    
     padder = padding.PKCS7(128).padder()
     padded_data = padder.update(message) + padder.finalize()
     iv = os.urandom(16)
