@@ -7,12 +7,14 @@ import os
 import datetime
 import socket
 import time
+from os import urandom
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import x25519
 from crypto_utils import x509Util
 from crypto_utils import ecdh_x25519
-from crypto_utils import aes256
+from crypto_utils import aes256_cbc
+from crypto_utils import chacha20_poly1305
 
 # Networking Settings
 HOST = 'localhost'  # The server's hostname or IP address
@@ -64,7 +66,8 @@ def listen(ip_address, port, pki_public_key,
             client_pki_public_cert_bytes = conn.recv(BUFFER_SIZE)
 
             print(
-                '3-1. Received client X509 public key for authentication')
+            '4-1. Received client X509 public key for authentication:\n' +
+            f'{client_pki_public_cert_bytes.decode()}')
 
             # time.sleep(CONSOLE_SPEED)
 
@@ -93,7 +96,7 @@ def listen(ip_address, port, pki_public_key,
             conn.sendall(pki_public_key_bytes)
 
             print(
-                '4-1. Sent host public key to client for authentication:\n' +
+                '4-1. Sent server X509 public key to client for authentication:\n' +
                 f'{pki_public_key_bytes.decode()}')
 
             # time.sleep(CONSOLE_SPEED)
@@ -147,28 +150,28 @@ def listen(ip_address, port, pki_public_key,
 
             # Decrypt the cipher text using shared key and the iv
             # once again, removal of padding is abstracted from the caller. 
-            plaintext = aes256.decrypt(iv, ciphertext, shared_key)
+            plaintext = aes256_cbc.decrypt(iv, ciphertext, shared_key)
 
-            print(f'8-2. Decrypted {plaintext} using AES256 in CBC mode')
+            print(f'8-2. Decrypted {plaintext} using block cipher AES256 in CBC mode')
 
             # time.sleep(CONSOLE_SPEED)
 
             # Server's plaintext to be encrypted and sent to server for decryption
             plaintext2 = b'Acknowledged by server.'
-            print(f'9-1. Encrypting {plaintext2} using AES256 in CBC mode')
+            print(f'9-1. Encrypting {plaintext2} using stream cipher aaed chacha20-poly1305')
             
-            # note that cbc mode is used, a random iv must be used for each message.
-            # the helper function aes256.encrypt() abstracted padding and random iv generation.
-            (iv2, ciphertext2) = aes256.encrypt(
-                diffie_hellman_shared_key=shared_key,
-                message=plaintext2
-            )
+            # Generate a 12-byte nonce using a secure random number generator
+            nonce = urandom(12)
+
+            # use the server's x.509 as public authenticated data for additional context
+            authenticated_public_data = x509Util.cert_fingerprint_from_bytes(pki_public_key_bytes)
+            ciphertext2 = chacha20_poly1305.encrypt(shared_key, nonce, plaintext2, authenticated_public_data)
 
             # prepend the iv to the ciphertext, the iv can be public but must be random
-            conn.sendall(iv2+ciphertext2)
+            conn.sendall(nonce+ciphertext2)
 
             print('9-2. Sent server data:\n' +
-                  f'random iv: {binascii.hexlify(iv2).decode()}\n' +
+                  f'nonce: {binascii.hexlify(nonce).decode()}\n' +
                   f'ciphertext: {binascii.hexlify(ciphertext2).decode()}')
 
 

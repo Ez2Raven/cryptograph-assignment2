@@ -13,7 +13,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import x25519
 from crypto_utils import x509Util
 from crypto_utils import ecdh_x25519
-from crypto_utils import aes256
+from crypto_utils import aes256_cbc
+from crypto_utils import chacha20_poly1305
 
 # Networking Settings
 SERVER = 'localhost'  # The server's hostname or IP address
@@ -64,10 +65,11 @@ def connect(server_ip_address, port, pki_public_key,
 
         # time.sleep(CONSOLE_SPEED)
 
+        # Wait for server to send their PKI public cert for authentication
         server_pki_public_cert_bytes = s.recv(BUFFER_SIZE)
 
         print(
-            '4-1. Received server pki public key for authentication:\n' +
+            '4-1. Received server X509 public key for authentication:\n' +
             f'{server_pki_public_cert_bytes.decode()}')
 
         # time.sleep(CONSOLE_SPEED)
@@ -130,11 +132,11 @@ def connect(server_ip_address, port, pki_public_key,
         # Client's plaintext to be encrypted and sent to server for decryption
         plaintext = b'secret message from client.'
 
-        print(f'8-1. Encrypting {plaintext} using AES256 in CBC mode')
+        print(f'8-1. Encrypting {plaintext} using block cipher AES256 in CBC mode')
 
         # note that cbc mode is used, a random iv must be used for each message.
         # the helper function aes256.encrypt() abstracted padding and random iv generation.
-        (iv, ciphertext) = aes256.encrypt(
+        (iv, ciphertext) = aes256_cbc.encrypt(
             diffie_hellman_shared_key=shared_key,
             message=plaintext
         )
@@ -151,21 +153,20 @@ def connect(server_ip_address, port, pki_public_key,
         # Waiting for client's command/inputs
         server_message = s.recv(BUFFER_SIZE)
 
-        # slice the first 16 bytes that represents our random iv
-        iv2 = server_message[:16]
+        # slice the first 12 bytes that represents the nonce
+        nonce = server_message[:12]
 
         # slice the remainding bytes that represents our ciphertext that needs decryption
-        ciphertext2 = server_message[16:]
+        ciphertext2 = server_message[12:]
 
         print('9-1. Received server data:\n' +
-              f'random iv: {binascii.hexlify(iv2).decode()}\n' +
+              f'nonce: {binascii.hexlify(nonce).decode()}\n' +
               f'ciphertext: {binascii.hexlify(ciphertext2).decode()}')
 
-        # Decrypt the cipher text using shared key and the iv
-        # once again, removal of padding is abstracted from the caller. 
-        plaintext2 = aes256.decrypt(iv2, ciphertext2, shared_key)
+        # Decrypt the cipher text using the trusted fingerprint of the server's x.509 certificate
+        plaintext2 = chacha20_poly1305.decrypt(shared_key, nonce, ciphertext2, trusted_server_fingerprint)
 
-        print(f'9-2. Decrypted {plaintext2} using AES256 in CBC mode')
+        print(f'9-2. Decrypted {plaintext2} using stream cipher aaed chacha20-poly1305')
 
 
 if __name__ == '__main__':
