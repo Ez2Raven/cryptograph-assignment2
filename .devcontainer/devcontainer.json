@@ -10,7 +10,7 @@
 				"ms-python.pylint"
 			]
 		}
-	}
+	},
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
@@ -19,7 +19,7 @@
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "pip3 install --user -r requirements.txt",
+	"postCreateCommand": "pip3 install --user -r requirements.txt && git config --global --add safe.directory /workspaces/crytography"
 
 	// Configure tool-specific properties.
 	// "customizations": {},
