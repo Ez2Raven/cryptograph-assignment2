@@ -7,7 +7,6 @@ import os
 import datetime
 import socket
 import time
-import logging
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import x25519
@@ -132,19 +131,24 @@ def connect(server_ip_address, port, pki_public_key,
         # Client's plaintext to be encrypted and sent to server for decryption
         plaintext = b'secret message from client.'
 
-        print(f'8-1. Encrypting {plaintext} using block cipher AES256 in CBC mode')
+        # sign the message
+        signature = x509Util.sign_message(x509_private_key, plaintext)
+        print(f'8-1. Digitally sign the message using x509 private key\n: {signature}')
 
         # note that cbc mode is used, a random iv must be used for each message.
         # the helper function aes256.encrypt() abstracted padding and random iv generation.
         (iv, ciphertext) = aes256_cbc.encrypt(
             diffie_hellman_shared_key=shared_key,
-            message=plaintext
+            message=plaintext+signature
         )
+
+        print(f'8-2. Encrypted {plaintext} with its signature using block cipher AES256 in CBC mode')
+
 
         # prepend the iv to the ciphertext, the iv can be public but must be random
         s.sendall(iv+ciphertext)
 
-        print('8-2. Sent client data:\n' +
+        print('8-3. Sent client data:\n' +
               f'random iv: {binascii.hexlify(iv).decode()}\n' +
               f'ciphertext: {binascii.hexlify(ciphertext).decode()}')
 
@@ -165,8 +169,16 @@ def connect(server_ip_address, port, pki_public_key,
 
         # Decrypt the cipher text using the trusted fingerprint of the server's x.509 certificate
         plaintext2 = chacha20_poly1305.decrypt(shared_key, nonce, ciphertext2, trusted_server_fingerprint)
-
         print(f'9-2. Decrypted {plaintext2} using stream cipher aead chacha20-poly1305')
+
+        # we assume both client and server uses the same key size.
+        # because we are not using a messaging protocol to define how to splice the data
+        server_message = plaintext2[:-x509_private_key.key_size // 8]
+        server_message_signature = plaintext2[-x509_private_key.key_size // 8:]
+
+        print('8-3. Verifying the digital signature of the message using the client x.509 cert public key.')
+        x509Util.verify_message(server_pki_public_cert_bytes, server_message_signature, server_message)
+        print(f'Message: {server_message} is verified to be sent from Server.')
 
 
 if __name__ == '__main__':
