@@ -166,7 +166,7 @@ def connect(server_ip_address, port, pki_public_key,
         # Decrypt the cipher text using the trusted fingerprint of the server's x.509 certificate
         plaintext2 = chacha20_poly1305.decrypt(shared_key, nonce, ciphertext2, trusted_server_fingerprint)
 
-        print(f'9-2. Decrypted {plaintext2} using stream cipher aaed chacha20-poly1305')
+        print(f'9-2. Decrypted {plaintext2} using stream cipher aead chacha20-poly1305')
 
 
 if __name__ == '__main__':

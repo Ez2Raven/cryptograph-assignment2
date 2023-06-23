@@ -158,7 +158,7 @@ def listen(ip_address, port, pki_public_key,
 
             # Server's plaintext to be encrypted and sent to server for decryption
             plaintext2 = b'Acknowledged by server.'
-            print(f'9-1. Encrypting {plaintext2} using stream cipher aaed chacha20-poly1305')
+            print(f'9-1. Encrypting {plaintext2} using stream cipher aead chacha20-poly1305')
             
             # Generate a 12-byte nonce using a secure random number generator
             nonce = urandom(12)
