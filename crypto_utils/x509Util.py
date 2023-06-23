@@ -4,7 +4,7 @@
 """
 import datetime
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.backends import default_backend
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -32,12 +32,13 @@ def write_private_key_to_file(private_key, filepath, passphase=b"passphrase"):
         key_bytes = private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm=serialization.BestAvailableEncryption(passphase)
-            )
-        
+            encryption_algorithm=serialization.BestAvailableEncryption(
+                passphase)
+        )
+
         print('[Write public cert to disk]' +
-                  f'PEM encoding:\n{key_bytes.decode()}')
-        
+              f'PEM encoding:\n{key_bytes.decode()}')
+
         with open(filepath, "wb") as file:
             file.write(key_bytes)
 
@@ -107,6 +108,7 @@ def write_public_key_to_file(public_cert, filepath):
         print('[Write public cert to disk]' +
               f'Error occurred while writing the public cert to file: {exception}\n')
 
+
 def cert_fingerprint_from_file(filepath, hash_function=hashes.SHA256()):
     '''
         Returns the certifcate fingerprint from a file.
@@ -118,8 +120,10 @@ def cert_fingerprint_from_file(filepath, hash_function=hashes.SHA256()):
 
     cert = x509.load_pem_x509_certificate(cert_data, default_backend())
     fingerprint = cert.fingerprint(hash_function)
-    print(f'X509 Certificate Location: {filepath}\nFingerprint: {fingerprint.hex()}')
+    print(
+        f'X509 Certificate Location: {filepath}\nFingerprint: {fingerprint.hex()}')
     return fingerprint
+
 
 def cert_fingerprint_from_bytes(cert_bytes, hash_function=hashes.SHA256()):
     '''
@@ -131,3 +135,44 @@ def cert_fingerprint_from_bytes(cert_bytes, hash_function=hashes.SHA256()):
     fingerprint = cert.fingerprint(hash_function)
     print(f'Fingerprint from bytes: {fingerprint.hex()}')
     return fingerprint
+
+
+def sign_message(private_key, plaintext):
+    '''
+        Signs the message using
+        MGF1 and PSS padding to ensure the security and uniqueness of the generated padding
+        uses sha256 for hashing
+    '''
+    signature = private_key.sign(
+        plaintext,
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH
+        ),
+        hashes.SHA256()
+    )
+    return signature
+
+def verify_message(cert_bytes, signature, message):
+    '''
+        Verify the message using
+        MGF1 and PSS padding to ensure the security and uniqueness of the generated padding
+        uses sha256 for hashing
+    '''
+    
+    certificate = x509.load_pem_x509_certificate(cert_bytes, default_backend())
+    public_key=certificate.public_key()
+    
+    try:
+        public_key.verify(
+            signature,
+            message,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        print("Signature is valid. Message is authentic.")
+    except Exception as ex:
+        print(f"Signature verification failed. Message may have been tampered with or the public key is incorrect.\n{ex}")

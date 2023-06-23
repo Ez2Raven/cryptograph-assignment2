@@ -136,13 +136,13 @@ def listen(ip_address, port, pki_public_key,
             # time.sleep(CONSOLE_SPEED)
 
             # Waiting for client's command/inputs
-            client_message = conn.recv(BUFFER_SIZE)
+            client_data = conn.recv(BUFFER_SIZE)
 
             # slice the first 16 bytes that represents our random iv
-            iv = client_message[:16]
+            iv = client_data[:16]
 
             # slice the remainding bytes that represents our ciphertext that needs decryption
-            ciphertext = client_message[16:]
+            ciphertext = client_data[16:]
 
             print('8-1. Received client data:\n' +
                   f'random iv: {binascii.hexlify(iv).decode()}\n' +
@@ -151,21 +151,36 @@ def listen(ip_address, port, pki_public_key,
             # Decrypt the cipher text using shared key and the iv
             # once again, removal of padding is abstracted from the caller. 
             plaintext = aes256_cbc.decrypt(iv, ciphertext, shared_key)
-
             print(f'8-2. Decrypted {plaintext} using block cipher AES256 in CBC mode')
+
+            # we assume both client and server uses the same key size.
+            # because we are not using a messaging protocol to define how to splice the data
+            client_message = plaintext[:-x509_private_key.key_size // 8]
+            client_message_signature = plaintext[-x509_private_key.key_size // 8:]
+
+            print('8-3. Verifying the digital signature of the message using the client x.509 cert public key.')
+            x509Util.verify_message(client_pki_public_cert_bytes, client_message_signature, client_message)
+            print(f'Message: {client_message} is verified to be sent from Client.')
 
             # time.sleep(CONSOLE_SPEED)
 
             # Server's plaintext to be encrypted and sent to server for decryption
             plaintext2 = b'Acknowledged by server.'
-            print(f'9-1. Encrypting {plaintext2} using stream cipher aead chacha20-poly1305')
-            
+
+            # sign the message
+            signature = x509Util.sign_message(x509_private_key, plaintext2)
+            print(f'9-1. Digitally sign the message using x509 private key\n: {signature}')
+
             # Generate a 12-byte nonce using a secure random number generator
             nonce = urandom(12)
 
             # use the server's x.509 as public authenticated data for additional context
             authenticated_public_data = x509Util.cert_fingerprint_from_bytes(pki_public_key_bytes)
-            ciphertext2 = chacha20_poly1305.encrypt(shared_key, nonce, plaintext2, authenticated_public_data)
+            
+            # encrypt the message with its signature using aead stream cipher
+            ciphertext2 = chacha20_poly1305.encrypt(shared_key, nonce, plaintext2+signature, authenticated_public_data)
+
+            print(f'9-2. Encrypted {plaintext2} with its signature using stream cipher aead chacha20-poly1305')
 
             # prepend the iv to the ciphertext, the iv can be public but must be random
             conn.sendall(nonce+ciphertext2)
